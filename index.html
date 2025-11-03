@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>No Sleep Page</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #121212;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    h1 {
+      color: #00ffcc;
+    }
+    button {
+      padding: 12px 24px;
+      font-size: 16px;
+      background-color: #00ffcc;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    button:hover {
+      background-color: #00ddb3;
+    }
+  </style>
+</head>
+<body>
+  <h1>🛌 No Sleep Mode Activated</h1>
+  <p>This page prevents your screen from sleeping or locking.</p>
+  <button onclick="activateWakeLock()">Activate Wake Lock</button>
+
+  <script>
+    let wakeLock = null;
+
+    async function activateWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          console.log('Wake Lock is active!');
+          wakeLock.addEventListener('release', () => {
+            console.log('Wake Lock was released');
+          });
+        } else {
+          alert('Wake Lock API not supported on this browser.');
+        }
+      } catch (err) {
+        console.error(`${err.name}, ${err.message}`);
+      }
+    }
+
+    // Re-activate wake lock on visibility change
+    document.addEventListener('visibilitychange', async () => {
+      if (wakeLock !== null && document.visibilityState === 'visible') {
+        activateWakeLock();
+      }
+    });
+  </script>
+</body>
+</html>
