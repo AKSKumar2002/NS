@@ -56,9 +56,9 @@
   <script src="https://unpkg.com/nosleep.js@0.12.0/dist/NoSleep.min.js"></script>
 </head>
 <body>
-  <!-- Add hidden video element -->
-  <video id="keepAwakeVideo" playsinline loop muted style="display:none">
-    <source src="data:video/mp4;base64,AAAAIGZ0eXBtcDQyAAAAAG1wNDJtcDQxaXNvbWF2YzEAAATKbW9vdgAAAGxtdmhkAAAAANLEP5XSxD+VAAB1MAAAdU4AAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAACFpb2RzAAAAABCAgIAQAE////9//w6AgIAEAAAAAQAABDV0cmFrAAAAXHRraGQAAAAH0sQ/ldLEP5UAAAABAAAAAAAAdU4AAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAoAAAAFoAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAHVOAAAH0gABAAAAAAOtbWRpYQAAACBtZGhkAAAAANLEP5XSxD+VAAB1MAAAdU5VxAAAAAAANmhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABMLVNNQVNIIHZpZGVvIGhhbmRsZXIAAAADT21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAw9zdGJsAAAAr3N0c2QAAAAAAAAAAQAAAJdhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAoABaABIAAAASAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGP//AAAAXmF2Y0MBQsAN/+EAFWdCwArZCXnnhAAAAAAADAIAAAAZc8YAAAABmjr93oAAAAAAAAZ1AAAAABBwYXNwAAAAAwgPAAAAACBhbGR0b3AAAAAAAAAAeIHeoQCRVGmYkD4AAAMUFICQAAbf9HAZwPh8/se77P/PwAAAAAAAABQQk5pY3QAAAAAiB9K/kkHAAAAAAAPcGl4ZWxfZm9ybWF0AQAFQk5pY3QAAAAIVGFnAAAAXgCRA5oABAAGAAYABwAMQ4QAAAAAAAAAAUgBAIyEANYAAAAXVGFnAAAALQGRA5oABAAGAAYACAAWAAAAAAFIAQCMhADWAAAAGVRhZwAAACwBkQOaAAQABgAGAAkACwAXAAAAAAFIAQCMhADWAAAAFlRhZwAAAC8BkQOaAAQABgAGAAoACgAYAAAAAUgBAIyEANYAAAAbVGFnAAAAHgGRA5oABAAGAAYACwAKABkAAAABSAEAjIQA1gAAABhVYWcAAAAVAZEDmgAEAAYABgAMAAkAGgAAAAFIAQCMhADWAAAAF1RhZwAAACYBkQOaAAQABgAGAA0ACAAbAAAAAUgBAIyEANYAAAAWVGFnAAAAJAGRA5oABAAGAAYADgAHABwAAAABSAEAjIQA1gAAABdVYWcAAAAbAZEDmgAEAAYABgAPAAYAHQAAAAFIAQCMhADWAAAAF1RhZwAAACQBkQOaAAQABgAGABAABQAeAAAAAUgBAIyEANYAAAAVVGFnAAAAFwGRA5oABAAGAAYAEQAEAB8AAAABSAEAjIQA1gAAAA5pY3QAAAAAaWN0AAAAAABFAAAAcHByb3AAAAABAAAASAAAAAEAAAAYcmVsYXRpdmUtY2hhbmdlAAAAEHN0Y28AAAAAAAEAAAAoc3Rzeg===" type="video/mp4">
+  <!-- Remove or hide video element -->
+  <video id="keepAwakeVideo" playsinline loop muted style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0.01">
+    <source src="data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwH/////////FUmpZpkq17GDD0JATYCGQ2hyb21lV0GGQ2hyb21lFlSua7+uvdeBAXPFhQFQbHVtEqqqx7Nw1" type="video/webm">
   </video>
 
   <div class="glass">
@@ -223,47 +223,111 @@
     // start in idle straight-scrolling
     startAnimation();
 
-    // Wake Lock with multiple methods
+    // Wake Lock with multiple aggressive methods
     let wakeLock = null;
     let wakeLockInterval = null;
+    let pingInterval = null;
     const noSleep = new NoSleep();
     const keepAwakeVideo = document.getElementById('keepAwakeVideo');
 
+    // Create invisible audio context to prevent sleep
+    let audioCtx = null;
+    let oscillator = null;
+
+    function startAudioKeepAwake() {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.value = 0.001; // Almost silent
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.frequency.value = 20; // Very low frequency
+        oscillator.start();
+      } catch(e) {}
+    }
+
+    function stopAudioKeepAwake() {
+      try {
+        if (oscillator) {
+          oscillator.stop();
+          oscillator.disconnect();
+          oscillator = null;
+        }
+        if (audioCtx) {
+          audioCtx.close();
+          audioCtx = null;
+        }
+      } catch(e) {}
+    }
+
+    // Periodic ping to keep connection alive
+    function startPingKeepAwake() {
+      if (pingInterval) clearInterval(pingInterval);
+      pingInterval = setInterval(() => {
+        // Make a tiny fetch request to keep network active
+        fetch('data:text/plain,ping', { method: 'HEAD' }).catch(() => {});
+        // Force canvas repaint
+        if (canvas) {
+          canvas.style.opacity = canvas.style.opacity === '0.9999' ? '1' : '0.9999';
+        }
+      }, 5000); // Every 5 seconds
+    }
+
+    function stopPingKeepAwake() {
+      if (pingInterval) {
+        clearInterval(pingInterval);
+        pingInterval = null;
+      }
+    }
+
     async function requestWakeLock() {
       try {
-        // 1. Enable NoSleep.js
+        // 1. NoSleep.js
         await noSleep.enable();
         
-        // 2. Start video playback
+        // 2. Video playback
         if (keepAwakeVideo) {
-          keepAwakeVideo.play();
+          keepAwakeVideo.volume = 0.01;
+          await keepAwakeVideo.play();
         }
+
+        // 3. Audio context
+        startAudioKeepAwake();
+
+        // 4. Periodic pings
+        startPingKeepAwake();
         
-        // 3. Request native wake lock
+        // 5. Native wake lock
         if ('wakeLock' in navigator) {
           wakeLock = await navigator.wakeLock.request('screen');
           wakeLock.addEventListener('release', async () => {
             wakeLock = null;
             if (mode === 'ecg') {
-              await requestWakeLock();
+              setTimeout(async () => {
+                try {
+                  wakeLock = await navigator.wakeLock.request('screen');
+                } catch(e) {}
+              }, 100);
             }
           });
         }
 
-        // 4. Set up aggressive periodic refresh
+        // 6. Aggressive refresh interval
         if (wakeLockInterval) clearInterval(wakeLockInterval);
         wakeLockInterval = setInterval(async () => {
           if (mode === 'ecg') {
             try {
-              // Refresh all wake lock methods
               await noSleep.enable();
-              if (keepAwakeVideo) keepAwakeVideo.play();
-              if (!wakeLock && 'wakeLock' in navigator) {
+              if (keepAwakeVideo && keepAwakeVideo.paused) {
+                await keepAwakeVideo.play();
+              }
+              if (!wakeLock && 'wakeLock' in navigator && document.visibilityState === 'visible') {
                 wakeLock = await navigator.wakeLock.request('screen');
               }
             } catch(e) {}
           }
-        }, 10000); // Refresh every 10 seconds
+        }, 5000); // Every 5 seconds
       } catch(e) {
         console.warn('wake lock failed', e);
       }
@@ -274,6 +338,9 @@
         clearInterval(wakeLockInterval);
         wakeLockInterval = null;
       }
+      stopPingKeepAwake();
+      stopAudioKeepAwake();
+      
       if (wakeLock) {
         try {
           await wakeLock.release();
@@ -293,13 +360,8 @@
       if (document.visibilityState === 'visible') {
         if (mode === 'ecg') {
           await requestWakeLock();
-          if (timerElapsed > 0) startTimer();
+          if (timerElapsed > 0 && !timerRunning) startTimer();
         }
-      } else if (mode === 'ecg') {
-        // Even when hidden, try to maintain wake lock
-        try {
-          await requestWakeLock();
-        } catch(e) {}
       }
     });
 
@@ -324,10 +386,6 @@
     if('serviceWorker' in navigator){
       navigator.serviceWorker.register('sw.js').catch(e=>console.warn('sw register failed', e));
     }
-
-    // re-acquire wake lock on visibility
-    document.addEventListener('visibilitychange', async ()=>{ if(document.visibilityState === 'visible'){ if(mode === 'ecg') try{ await requestWakeLock(); }catch(e){} } });
-
   </script>
 </body>
 </html>
