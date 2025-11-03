@@ -53,6 +53,7 @@
       .label{font-size:22px}
     }
   </style>
+  <script src="https://unpkg.com/nosleep.js@0.12.0/dist/NoSleep.min.js"></script>
 </head>
 <body>
   <div class="glass">
@@ -220,22 +221,39 @@
     // Wake Lock
     let wakeLock = null;
     let wakeLockInterval = null;
+    const noSleep = new NoSleep(); // Initialize NoSleep
 
     async function requestWakeLock() {
       try {
+        // Enable NoSleep as primary prevention
+        await noSleep.enable();
+        
+        // Also try native wake lock as backup
         if ('wakeLock' in navigator) {
           wakeLock = await navigator.wakeLock.request('screen');
-          wakeLock.addEventListener('release', () => {
+          wakeLock.addEventListener('release', async () => {
             wakeLock = null;
+            // Re-request if still in ECG mode
+            if (mode === 'ecg') {
+              try {
+                wakeLock = await navigator.wakeLock.request('screen');
+              } catch(e) {}
+            }
           });
 
           // Set up periodic wake lock refresh
           if (wakeLockInterval) clearInterval(wakeLockInterval);
           wakeLockInterval = setInterval(async () => {
-            if (document.visibilityState === 'visible' && !wakeLock) {
-              wakeLock = await navigator.wakeLock.request('screen');
+            if (mode === 'ecg') {
+              try {
+                if (!wakeLock) {
+                  wakeLock = await navigator.wakeLock.request('screen');
+                }
+                // Force video playback refresh
+                await noSleep.enable();
+              } catch(e) {}
             }
-          }, 30000); // Refresh every 30 seconds
+          }, 15000); // Refresh every 15 seconds
         }
       } catch(e) {
         console.warn('wake lock failed', e);
@@ -253,6 +271,9 @@
           wakeLock = null;
         } catch(e) {}
       }
+      try {
+        noSleep.disable();
+      } catch(e) {}
     }
 
     // Enhanced visibility change handler
@@ -261,16 +282,8 @@
         if (mode === 'ecg') {
           try {
             await requestWakeLock();
-            // Resume timer if it was running
             if (timerElapsed > 0) startTimer();
           } catch(e) {}
-        }
-      } else {
-        // Tab is hidden
-        if (wakeLock) {
-          await releaseWakeLock();
-          // Pause timer but don't reset
-          pauseTimer();
         }
       }
     });
