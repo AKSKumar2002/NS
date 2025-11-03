@@ -219,8 +219,61 @@
 
     // Wake Lock
     let wakeLock = null;
-    async function requestWakeLock(){ try{ if('wakeLock' in navigator){ wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', ()=>{ wakeLock = null; }); } }catch(e){ console.warn('wake lock failed', e); } }
-    async function releaseWakeLock(){ if(wakeLock){ try{ await wakeLock.release(); wakeLock = null; }catch(e){} } }
+    let wakeLockInterval = null;
+
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          wakeLock.addEventListener('release', () => {
+            wakeLock = null;
+          });
+
+          // Set up periodic wake lock refresh
+          if (wakeLockInterval) clearInterval(wakeLockInterval);
+          wakeLockInterval = setInterval(async () => {
+            if (document.visibilityState === 'visible' && !wakeLock) {
+              wakeLock = await navigator.wakeLock.request('screen');
+            }
+          }, 30000); // Refresh every 30 seconds
+        }
+      } catch(e) {
+        console.warn('wake lock failed', e);
+      }
+    }
+
+    async function releaseWakeLock() {
+      if (wakeLockInterval) {
+        clearInterval(wakeLockInterval);
+        wakeLockInterval = null;
+      }
+      if (wakeLock) {
+        try {
+          await wakeLock.release();
+          wakeLock = null;
+        } catch(e) {}
+      }
+    }
+
+    // Enhanced visibility change handler
+    document.addEventListener('visibilitychange', async () => {
+      if (document.visibilityState === 'visible') {
+        if (mode === 'ecg') {
+          try {
+            await requestWakeLock();
+            // Resume timer if it was running
+            if (timerElapsed > 0) startTimer();
+          } catch(e) {}
+        }
+      } else {
+        // Tab is hidden
+        if (wakeLock) {
+          await releaseWakeLock();
+          // Pause timer but don't reset
+          pauseTimer();
+        }
+      }
+    });
 
     // Controls now toggle modes and control timer
     document.getElementById('activateBtn').addEventListener('click', async (evt)=>{
