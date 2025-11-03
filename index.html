@@ -1,68 +1,177 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>No Sleep Page</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>No Sleep</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #121212;
-      color: #ffffff;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
+    :root{--bg:#050507;--glass:rgba(255,255,255,0.04);--accent:#00ffcc;--muted:rgba(255,255,255,0.5)}
+    html,body{height:100%;margin:0}
+    body{
+      display:flex;align-items:center;justify-content:center;height:100vh;background:radial-gradient(1000px 600px at 10% 10%, #071017 0%, #030304 40%, var(--bg) 100%);
+      font-family:Inter, system-ui, Arial, sans-serif;color:var(--muted);
     }
-    h1 {
-      color: #00ffcc;
+
+    .glass{
+      width:min(820px,94%);
+      height:420px;
+      border-radius:18px;
+      padding:28px 22px;
+      background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));
+      border:1px solid rgba(255,255,255,0.05);
+      box-shadow:0 10px 40px rgba(0,0,0,0.6);
+      backdrop-filter: blur(14px) saturate(120%);
+      -webkit-backdrop-filter: blur(14px) saturate(120%);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;position:relative;overflow:hidden
     }
-    button {
-      padding: 12px 24px;
-      font-size: 16px;
-      background-color: #00ffcc;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      margin-top: 20px;
+
+    /* faint vignette lines as decoration */
+    .glass:before{
+      content:'';position:absolute;inset:0;border-radius:18px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.02);pointer-events:none
     }
-    button:hover {
-      background-color: #00ddb3;
+
+    canvas{width:100%;max-width:760px;height:200px;border-radius:12px;display:block;background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.22));border:1px solid rgba(255,255,255,0.03)}
+
+    .label{font-size:28px;color:var(--accent);letter-spacing:1px;margin-top:6px;font-weight:700}
+    .by{font-size:12px;color:rgba(255,255,255,0.32);margin-top:2px}
+
+    .controls{display:flex;gap:12px;margin-top:6px}
+    .btn{padding:10px 18px;border-radius:10px;border:none;cursor:pointer;font-weight:700;color:#001;background:linear-gradient(90deg,var(--accent),#00ddb3);box-shadow:0 8px 24px rgba(0,255,204,0.06)}
+    .btn.secondary{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.04)}
+
+    @media (max-width:600px){
+      .glass{height:360px;padding:18px}
+      canvas{height:160px}
+      .label{font-size:22px}
     }
   </style>
 </head>
 <body>
-  <h1>🛌 No Sleep Mode Activated</h1>
-  <p>This page prevents your screen from sleeping or locking.</p>
-  <button onclick="activateWakeLock()">Activate Wake Lock</button>
+  <div class="glass">
+    <canvas id="ecg" width="760" height="200" aria-hidden="true"></canvas>
+    <div class="label">No Sleep</div>
+    <div class="by">Powered by Qubo</div>
+
+    <div class="controls" style="position:relative;z-index:2">
+      <button id="activateBtn" class="btn">Activate</button>
+      <button id="releaseBtn" class="btn secondary">Release</button>
+    </div>
+  </div>
 
   <script>
-    let wakeLock = null;
+    // Simple ECG line animation (P-QRS-T), responsive, controlled by Activate/Release
+    const canvas = document.getElementById('ecg');
+    const ctx = canvas.getContext('2d');
+    const DPR = window.devicePixelRatio || 1;
 
-    async function activateWakeLock() {
-      try {
-        if ('wakeLock' in navigator) {
-          wakeLock = await navigator.wakeLock.request('screen');
-          console.log('Wake Lock is active!');
-          wakeLock.addEventListener('release', () => {
-            console.log('Wake Lock was released');
-          });
-        } else {
-          alert('Wake Lock API not supported on this browser.');
-        }
-      } catch (err) {
-        console.error(`${err.name}, ${err.message}`);
+    let width = 0, height = 0, buffer = null;
+    function resize(){
+      width = canvas.clientWidth;
+      height = canvas.clientHeight;
+      canvas.width = Math.floor(width * DPR);
+      canvas.height = Math.floor(height * DPR);
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      ctx.setTransform(DPR,0,0,DPR,0,0);
+      buffer = new Float32Array(width).fill(height/2);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Beat generator (P-QRS-T) - returns array of y coordinates
+    function makeBeat(len){
+      const mid = height/2;
+      const arr = new Float32Array(len);
+      for(let i=0;i<len;i++){
+        const x = i / len;
+        let y = 0;
+        y += Math.exp(-Math.pow((x-0.12)/0.03,2)) * 4;      // P
+        y += -Math.exp(-Math.pow((x-0.20)/0.006,2)) * 7;    // Q
+        y += Math.exp(-Math.pow((x-0.235)/0.0028,2)) * 110; // R (sharp)
+        y += -Math.exp(-Math.pow((x-0.245)/0.005,2)) * 20;  // S
+        y += Math.exp(-Math.pow((x-0.45)/0.03,2)) * 8;      // T
+        arr[i] = mid - y;
       }
+      return arr;
     }
 
-    // Re-activate wake lock on visibility change
-    document.addEventListener('visibilitychange', async () => {
-      if (wakeLock !== null && document.visibilityState === 'visible') {
-        activateWakeLock();
+    // scheduling
+    let beatWave = null;
+    let beatPos = 0;
+    const bpm = 72;
+    const beatIntervalMs = 60000 / bpm;
+    let lastBeatTime = performance.now();
+    const beatLen = Math.max(24, Math.round(width * 0.08));
+
+    function pushSample(){
+      // shift left efficiently
+      buffer.copyWithin(0,1);
+
+      const now = performance.now();
+      if(!beatWave && (now - lastBeatTime) >= beatIntervalMs){
+        beatWave = makeBeat(Math.max(16, beatLen));
+        beatPos = 0;
+        lastBeatTime = now;
       }
-    });
+
+      // baseline noise
+      let sample = height/2 + Math.sin(now*0.003)*1.0 + (Math.random()-0.5)*0.6;
+      if(beatWave){
+        sample = beatWave[Math.min(beatPos, beatWave.length-1)] + (Math.random()-0.5)*0.6;
+        beatPos++;
+        if(beatPos >= beatWave.length) { beatWave = null; beatPos = 0; }
+      }
+
+      buffer[buffer.length-1] = sample;
+    }
+
+    function draw(){
+      // clear
+      ctx.clearRect(0,0,width,height);
+
+      // subtle background midline
+      ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, height/2); ctx.lineTo(width, height/2); ctx.stroke();
+
+      // draw main path
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.beginPath();
+      for(let i=0;i<buffer.length;i++){
+        const x = i;
+        const y = buffer[i];
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+
+      // glow
+      ctx.strokeStyle = 'rgba(255,40,40,0.12)'; ctx.lineWidth = 8; ctx.stroke();
+      // main red line
+      ctx.beginPath();
+      for(let i=0;i<buffer.length;i++){
+        const x = i; const y = buffer[i]; if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle = '#ff2b2b'; ctx.lineWidth = 2.8; ctx.stroke();
+    }
+
+    let running = false; let raf = null;
+    function frame(){ pushSample(); draw(); if(running) raf = requestAnimationFrame(frame); }
+    function startECG(){ if(running) return; running = true; lastBeatTime = performance.now(); frame(); }
+    function stopECG(){ if(!running) return; running = false; if(raf) cancelAnimationFrame(raf); ctx.clearRect(0,0,width,height); }
+
+    // Wake Lock + audio fallback (kept as before)
+    let wakeLock = null; let audioCtx = null; let silentOsc = null;
+    async function requestWakeLock(){ try{ if('wakeLock' in navigator){ wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', ()=>{ wakeLock = null; }); } }catch(e){ console.warn('wake lock failed', e); } }
+    async function releaseWakeLock(){ if(wakeLock){ try{ await wakeLock.release(); wakeLock = null; }catch(e){} } }
+    async function startAudio(){ try{ if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); await audioCtx.resume(); silentOsc = audioCtx.createOscillator(); const g = audioCtx.createGain(); g.gain.value = 0.00005; silentOsc.type = 'sine'; silentOsc.frequency.value = 20; silentOsc.connect(g); g.connect(audioCtx.destination); silentOsc.start(); }catch(e){ console.warn('audio fallback failed', e); } }
+    function stopAudio(){ try{ if(silentOsc){ silentOsc.stop(); silentOsc.disconnect(); silentOsc = null; } }catch(e){} }
+
+    // Controls
+    document.getElementById('activateBtn').addEventListener('click', async ()=>{ await requestWakeLock(); startECG(); await startAudio(); });
+    document.getElementById('releaseBtn').addEventListener('click', async ()=>{ stopECG(); stopAudio(); await releaseWakeLock(); });
+
+    // re-acquire on visibility
+    document.addEventListener('visibilitychange', async ()=>{ if(document.visibilityState === 'visible'){ if(running) try{ await requestWakeLock(); }catch(e){} } });
+
   </script>
 </body>
 </html>
