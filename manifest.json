@@ -1,6 +1,6 @@
 {
   "name": "Qubo No Sleep",
-  "short_name": "Hi User ! ",
+  "short_name": "NoSleep",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#000000",

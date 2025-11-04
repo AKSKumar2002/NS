@@ -47,83 +47,25 @@
       color:var(--accent);font-weight:700;font-size:13px;border:1px solid rgba(255,255,255,0.04);backdrop-filter:blur(6px);
     }
 
-    /* Toast notification */
-    #pinNotification {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%) translateY(100px);
-      padding: 14px 20px;
-      background: linear-gradient(135deg, rgba(0,255,204,0.15), rgba(0,221,179,0.15));
-      border: 1px solid var(--accent);
-      border-radius: 12px;
-      color: var(--accent);
-      font-size: 13px;
-      font-weight: 600;
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      opacity: 0;
-      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-      z-index: 1000;
-      pointer-events: none;
-      text-align: center;
-      max-width: 90%;
-      box-shadow: 0 8px 32px rgba(0,255,204,0.2);
-    }
-
-    #pinNotification.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-      pointer-events: auto;
-    }
-
-    #pinNotification .close {
-      margin-left: 12px;
-      cursor: pointer;
-      opacity: 0.7;
-      transition: opacity 0.2s;
-    }
-
-    #pinNotification .close:hover {
-      opacity: 1;
-    }
-
     @media (max-width:600px){
       .glass{height:360px;padding:18px}
       canvas{height:160px}
       .label{font-size:22px}
-      #pinNotification {
-        font-size: 12px;
-        padding: 12px 16px;
-        bottom: 16px;
-      }
     }
   </style>
-  <script src="https://unpkg.com/nosleep.js@0.12.0/dist/NoSleep.min.js"></script>
 </head>
 <body>
-  <!-- Remove or hide video element -->
-  <video id="keepAwakeVideo" playsinline loop muted style="position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0.01">
-    <source src="data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwH/////////FUmpZpkq17GDD0JATYCGQ2hyb21lV0GGQ2hyb21lFlSua7+uvdeBAXPFhQFQbHVtEqqqx7Nw1" type="video/webm">
-  </video>
-
   <div class="glass">
     <canvas id="ecg" width="760" height="200" aria-hidden="true"></canvas>
     <div id="timer">00:00</div>
     <button id="installBtn" aria-hidden="true" title="Install app" style="position:absolute;top:12px;right:88px;display:none;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,0.03);color:var(--accent);border:1px solid rgba(255,255,255,0.04);font-weight:700;font-size:13px">Install</button>
-    <div class="label">Hi User !</div>
+    <div class="label">No Sleep</div>
     <div class="by">Powered by Qubo</div>
 
     <div class="controls" style="position:relative;z-index:2">
       <button id="activateBtn" class="btn">Activate</button>
       <button id="releaseBtn" class="btn secondary">Release</button>
     </div>
-  </div>
-
-  <!-- Toast notification for pinning tab -->
-  <div id="pinNotification">
-    💡 Tip: Right-click this tab and select "Pin Tab" for best results
-    <span class="close">✕</span>
   </div>
 
   <script>
@@ -275,182 +217,10 @@
     // start in idle straight-scrolling
     startAnimation();
 
-    // Wake Lock with multiple aggressive methods
+    // Wake Lock
     let wakeLock = null;
-    let wakeLockInterval = null;
-    let pingInterval = null;
-    const noSleep = new NoSleep();
-    const keepAwakeVideo = document.getElementById('keepAwakeVideo');
-
-    // Create invisible audio context to prevent sleep
-    let audioCtx = null;
-    let oscillator = null;
-
-    function startAudioKeepAwake() {
-      try {
-        audioCtx = new (window.AudioContext || window.webkit.AudioContext)();
-        oscillator = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
-        gainNode.gain.value = 0.001; // Almost silent
-        oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-        oscillator.frequency.value = 20; // Very low frequency
-        oscillator.start();
-      } catch(e) {}
-    }
-
-    function stopAudioKeepAwake() {
-      try {
-        if (oscillator) {
-          oscillator.stop();
-          oscillator.disconnect();
-          oscillator = null;
-        }
-        if (audioCtx) {
-          audioCtx.close();
-          audioCtx = null;
-        }
-      } catch(e) {}
-    }
-
-    // Periodic ping to keep connection alive
-    function startPingKeepAwake() {
-      if (pingInterval) clearInterval(pingInterval);
-      pingInterval = setInterval(() => {
-        // Make a tiny fetch request to keep network active
-        fetch('data:text/plain,ping', { method: 'HEAD' }).catch(() => {});
-        // Force canvas repaint
-        if (canvas) {
-          canvas.style.opacity = canvas.style.opacity === '0.9999' ? '1' : '0.9999';
-        }
-      }, 5000); // Every 5 seconds
-    }
-
-    function stopPingKeepAwake() {
-      if (pingInterval) {
-        clearInterval(pingInterval);
-        pingInterval = null;
-      }
-    }
-
-    async function requestWakeLock() {
-      try {
-        // 1. NoSleep.js
-        await noSleep.enable();
-        
-        // 2. Video playback
-        if (keepAwakeVideo) {
-          keepAwakeVideo.volume = 0.01;
-          await keepAwakeVideo.play();
-        }
-
-        // 3. Audio context
-        startAudioKeepAwake();
-
-        // 4. Periodic pings
-        startPingKeepAwake();
-        
-        // 5. Native wake lock
-        if ('wakeLock' in navigator) {
-          wakeLock = await navigator.wakeLock.request('screen');
-          wakeLock.addEventListener('release', async () => {
-            wakeLock = null;
-            if (mode === 'ecg') {
-              setTimeout(async () => {
-                try {
-                  wakeLock = await navigator.wakeLock.request('screen');
-                } catch(e) {}
-              }, 100);
-            }
-          });
-        }
-
-        // 6. Aggressive refresh interval
-        if (wakeLockInterval) clearInterval(wakeLockInterval);
-        wakeLockInterval = setInterval(async () => {
-          if (mode === 'ecg') {
-            try {
-              await noSleep.enable();
-              if (keepAwakeVideo && keepAwakeVideo.paused) {
-                await keepAwakeVideo.play();
-              }
-              if (!wakeLock && 'wakeLock' in navigator && document.visibilityState === 'visible') {
-                wakeLock = await navigator.wakeLock.request('screen');
-              }
-            } catch(e) {}
-          }
-        }, 5000); // Every 5 seconds
-      } catch(e) {
-        console.warn('wake lock failed', e);
-      }
-    }
-
-    async function releaseWakeLock() {
-      if (wakeLockInterval) {
-        clearInterval(wakeLockInterval);
-        wakeLockInterval = null;
-      }
-      stopPingKeepAwake();
-      stopAudioKeepAwake();
-      
-      if (wakeLock) {
-        try {
-          await wakeLock.release();
-          wakeLock = null;
-        } catch(e) {}
-      }
-      try {
-        noSleep.disable();
-        if (keepAwakeVideo) {
-          keepAwakeVideo.pause();
-        }
-      } catch(e) {}
-    }
-
-    // Enhanced visibility change handler
-    document.addEventListener('visibilitychange', async () => {
-      if (document.visibilityState === 'visible') {
-        if (mode === 'ecg') {
-          await requestWakeLock();
-          if (timerElapsed > 0 && !timerRunning) startTimer();
-        }
-      }
-    });
-
-    // Toast notification for pinning tab
-    const pinNotification = document.getElementById('pinNotification');
-    let notificationTimeout = null;
-
-    function showPinNotification() {
-      // Only show once per session
-      if (sessionStorage.getItem('pinNotificationShown')) return;
-      
-      if (pinNotification) {
-        pinNotification.classList.add('show');
-        
-        // Auto-hide after 8 seconds
-        notificationTimeout = setTimeout(() => {
-          hidePinNotification();
-        }, 8000);
-        
-        sessionStorage.setItem('pinNotificationShown', 'true');
-      }
-    }
-
-    function hidePinNotification() {
-      if (pinNotification) {
-        pinNotification.classList.remove('show');
-        if (notificationTimeout) clearTimeout(notificationTimeout);
-      }
-    }
-
-    // Close button handler
-    if (pinNotification) {
-      const closeBtn = pinNotification.querySelector('.close');
-      if (closeBtn) {
-        closeBtn.addEventListener('click', hidePinNotification);
-      }
-    }
+    async function requestWakeLock(){ try{ if('wakeLock' in navigator){ wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', ()=>{ wakeLock = null; }); } }catch(e){ console.warn('wake lock failed', e); } }
+    async function releaseWakeLock(){ if(wakeLock){ try{ await wakeLock.release(); wakeLock = null; }catch(e){} } }
 
     // Controls now toggle modes and control timer
     document.getElementById('activateBtn').addEventListener('click', async (evt)=>{
@@ -466,9 +236,6 @@
       await requestWakeLock();
       setModeEcg();
       startTimer();
-      
-      // Show pin notification on first activation
-      showPinNotification();
     });
     document.getElementById('releaseBtn').addEventListener('click', async ()=>{ setModeIdle(); pauseTimer(); await releaseWakeLock(); });
 
@@ -476,6 +243,10 @@
     if('serviceWorker' in navigator){
       navigator.serviceWorker.register('sw.js').catch(e=>console.warn('sw register failed', e));
     }
+
+    // re-acquire wake lock on visibility
+    document.addEventListener('visibilitychange', async ()=>{ if(document.visibilityState === 'visible'){ if(mode === 'ecg') try{ await requestWakeLock(); }catch(e){} } });
+
   </script>
 </body>
 </html>
