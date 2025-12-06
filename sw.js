@@ -1,4 +1,4 @@
-const CACHE_NAME = 'qubo-nosleep-v4-stealth';
+const CACHE_NAME = 'qubo-nosleep-v5-theme-update';
 const FILES_TO_CACHE = [
   '/',
   '/index.html',
